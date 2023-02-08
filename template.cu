@@ -30,33 +30,36 @@ __global__ void matrixMultiplyShared(float *A, float *B, float *C,
 	__shared__ float matrixBTile[tileWidth][tileWidth];
 
 	float finalVal = 0;
-	if(currRow < numCRows && currColumn < numCColumns) {
-		// loop over every phase of multiplication - EACH ITERATION COMBINES TWO SUBMATRICES!
-		for(int numTileMultiplies = 0; numTileMultiplies < (width / tileWidth); numTileMultiplies ++) {
-		// ADD PROPER BOUNDARY CHECKS!!!
-		       if(numTileMultiplies * tileWidth + tx < numAColumns && numTileMultiplies * tileWidth + ty < numBRows) {
-	         	       // indices for A: A(currRow, numTileMultiplies* tileWidth + tx)
-	        		// loads proper ROW element into A subtile(Transposed for more efficient retrieval)
-				matrixATile[tx][ty] = A[(currRow * width) + (numTileMultiplies*tileWidth) + tx];
-				// loads proper COLUMN element into B subtile
-				//indices for B:(numTileMultiplies * tileWidth + ty, currColumn)
-				matrixBTile[ty][tx] = B[(numTileMultiplies * tileWidth + ty) * width + currColumn];
-			} else {
-				matrixATile[tx][ty] = 0;
-				matrixBTile[ty][tx] = 0;
-			}
-			//ensures matrixATile and matrixBTile are fully loaded properly before multiplications
-			__syncthreads();
-               		// multiply tiles together
-			for(int k = 0; k < tileWidth; k++) {
-				finalVal += matrixATile[k][ty] * matrixBTile[k][tx];
-			}
-			// ensures finalVal stores correct value before progressing in the loop.
-			__syncthreads();
+	// loop over every phase of multiplication - EACH ITERATION COMBINES TWO SUBMATRICES!
+	for(int numTileMultiplies = 0; numTileMultiplies < 1 + (width - 1) / tileWidth; numTileMultiplies ++) {
+	       if(currRow < numCRows && numTileMultiplies * tileWidth + tx < width) {
+	  	       	// indices for A: A(currRow, numTileMultiplies* tileWidth + tx)
+	       		// loads proper ROW element into A subtile(Transposed for more efficient retrieval)
+			matrixATile[tx][ty] = A[(currRow * width) + (numTileMultiplies*tileWidth) + tx];
+		} else {
+			matrixATile[tx][ty] = 0;
 		}
-		// store final computation in matrix C
-	       	C[currRow * width + currColumn] = finalVal;
+		if(currColumn < numCColumns && numTileMultiplies * tileWidth + ty < width) {
+			// loads proper COLUMN element into B subtile
+			//indices for B:(numTileMultiplies * tileWidth + ty, currColumn)
+			matrixBTile[ty][tx] = B[(numTileMultiplies * tileWidth + ty) * width + currColumn];
+		} else {
+			matrixBTile[ty][tx] = 0;
+		}
+		//ensures matrixATile and matrixBTile are fully loaded properly before multiplications
+		__syncthreads();
+            	// multiply tiles together
+		for(int k = 0; k < tileWidth; k++) {
+			finalVal += matrixATile[k][ty] * matrixBTile[k][tx];
+		}
+		// ensures finalVal stores correct value before progressing in the loop.
+		__syncthreads();
 	}
+	// store final computation in matrix C
+	if(currRow < numCRows && currColumn < numCColumns) {
+       		C[currRow * numCColumns + currColumn] = finalVal;
+	}
+
 
 }
 
