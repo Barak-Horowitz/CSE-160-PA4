@@ -31,20 +31,22 @@ __global__ void matrixMultiplyShared(float *A, float *B, float *C,
 
 	float finalVal = 0;
 	// loop over every phase of multiplication - EACH ITERATION COMBINES TWO SUBMATRICES!
-	for(int numTileMultiplies = 0; numTileMultiplies < 1 + (width - 1) / tileWidth; numTileMultiplies ++) {
-	       if(currRow < numCRows && numTileMultiplies * tileWidth + tx < width) {
+	for(int numTileMultiplies = 0; numTileMultiplies < 1 + (width / tileWidth); numTileMultiplies ++) {
+	       if(currRow < numARows && numTileMultiplies * tileWidth + tx < width) {
 	  	       	// indices for A: A(currRow, numTileMultiplies* tileWidth + tx)
 	       		// loads proper ROW element into A subtile(Transposed for more efficient retrieval)
 			matrixATile[tx][ty] = A[(currRow * width) + (numTileMultiplies*tileWidth) + tx];
 		} else {
 			matrixATile[tx][ty] = 0;
+//			printf("attempted to access index(%s, %s) in A \n" currRow, numTileMultiplies * tileWidth + tx);
 		}
-		if(currColumn < numCColumns && numTileMultiplies * tileWidth + ty < width) {
+		if(currColumn < numBColumns && numTileMultiplies * tileWidth + ty < width) {
 			// loads proper COLUMN element into B subtile
 			//indices for B:(numTileMultiplies * tileWidth + ty, currColumn)
-			matrixBTile[ty][tx] = B[(numTileMultiplies * tileWidth + ty) * width + currColumn];
+			matrixBTile[ty][tx] = B[(numTileMultiplies * tileWidth + ty) * numBColumns + currColumn];
 		} else {
 			matrixBTile[ty][tx] = 0;
+//			printf("attempted to access index (%s,%s) in B \n" numTileMultiplies * tileWidth + ty, currColumn);
 		}
 		//ensures matrixATile and matrixBTile are fully loaded properly before multiplications
 		__syncthreads();
@@ -94,7 +96,7 @@ int main(int argc, char **argv) {
   hostC = (float *) malloc(numCRows * numCColumns * sizeof(float));
   gpuTKLog(TRACE, "The dimensions of A are ", numARows, " x ", numAColumns);
   gpuTKLog(TRACE, "The dimensions of B are ", numBRows, " x ", numBColumns);
-
+  gpuTKLog(TRACE, "The dimsensions of C are ", numCRows, " x ", numCColumns);
   gpuTKTime_start(GPU, "Allocating GPU memory.");
   //@@ Allocate GPU memory here
   cudaMalloc((void **) &deviceA, numARows * numAColumns * sizeof(float));
@@ -111,7 +113,7 @@ int main(int argc, char **argv) {
 
   //@@ Initialize the grid and block dimensions here
   dim3 threadsPerBlock(tileWidth,tileWidth);
-  dim3 blocksPerGrid(numCRows/tileWidth + 1, numCColumns/tileWidth + 1);
+  dim3 blocksPerGrid(numCColumns / tileWidth + 1, numCRows / tileWidth + 1);
   gpuTKTime_start(Compute, "Performing CUDA computation");
   //@@ Launch the GPU Kernel here
   matrixMultiplyShared<<<blocksPerGrid, threadsPerBlock>>>(deviceA, deviceB, deviceC,
